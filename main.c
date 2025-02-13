@@ -17,9 +17,12 @@
 // the CTRL_KEY('key') macro is used to take a character and bitwise-AND it with 00011111, which is 31 in decimal, to get the control key value.
 
 /*** data ***/
+struct editorConfig
+{
+    struct termios orig_termios;
+};
 
-struct termios orig_termios;
-
+struct editorConfig E;
 /*** terminal ***/
 
 void die(const char *s)
@@ -35,7 +38,7 @@ void die(const char *s)
 
 void disableRawMode()
 {
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1)
     {
         die("tcsetattr");
     };
@@ -43,11 +46,11 @@ void disableRawMode()
 
 void enableRawMode()
 {
-    if (tcgetattr(STDIN_FILENO, &orig_termios) == -1)
+    if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1)
         die("tcgetattr");
     // atexit() comes from <stdlib.h> and is used to register a function to be called when the program exits.
     atexit(disableRawMode);
-    struct termios raw = orig_termios;
+    struct termios raw = E.orig_termios;
 
     raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
 
@@ -123,6 +126,16 @@ void editorProcessKeypress()
 }
 
 /** output */
+void editorDrawRows()
+{
+
+    // this loop is to draw the rows of tildes.
+    int y;
+    for (y = 0; y < 24; y++)
+    {
+        write(STDOUT_FILENO, "~\r\n", 3);
+    }
+}
 
 void editorRefreshScreen()
 {
@@ -134,6 +147,9 @@ void editorRefreshScreen()
     write(STDOUT_FILENO, "\x1b[H", 3);
     // \x1b is the escape character.
     // This escape sequence is only 3 bytes long, and uses the H command (Cursor Position) to position the cursor. The H command actually takes two arguments: the row number and the column number at which to position the cursor.
+
+    editorDrawRows();
+    write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
 /** init */
