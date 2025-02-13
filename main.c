@@ -24,6 +24,9 @@ struct termios orig_termios;
 
 void die(const char *s)
 {
+    write(STDOUT_FILENO, "\x1b[2J", 4);
+    write(STDOUT_FILENO, "\x1b[H", 3);
+
     perror(s);
     // perror() comes from <stdio.h> and is used to print an error message to the terminal.
     exit(1);
@@ -112,9 +115,25 @@ void editorProcessKeypress()
     switch (c)
     {
     case CTRL_KEY('q'):
+        write(STDOUT_FILENO, "\x1b[2J", 4);
+        write(STDOUT_FILENO, "\x1b[H", 3);
         exit(0);
         break;
     }
+}
+
+/** output */
+
+void editorRefreshScreen()
+{
+    write(STDOUT_FILENO, "\x1b[2J", 4);
+    // \x1b is the escape character.
+    // there is 4 in the end because the escape sequence is 4 bytes long.
+    // the write() function is used to write to the terminal.
+    // STDOUT_FILENO is a file descriptor that represents standard output.
+    write(STDOUT_FILENO, "\x1b[H", 3);
+    // \x1b is the escape character.
+    // This escape sequence is only 3 bytes long, and uses the H command (Cursor Position) to position the cursor. The H command actually takes two arguments: the row number and the column number at which to position the cursor.
 }
 
 /** init */
@@ -124,6 +143,7 @@ int main()
 
     while (1)
     {
+        editorRefreshScreen();
         editorProcessKeypress();
     };
     return 0;
