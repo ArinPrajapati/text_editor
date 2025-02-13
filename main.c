@@ -19,9 +19,12 @@ void enableRawMode()
     // atexit() comes from <stdlib.h> and is used to register a function to be called when the program exits.
     atexit(disableRawMode);
     struct termios raw = orig_termios;
+    raw.c_iflag &= ~(IXON);
+    // IXON comes from <termios.h>
+    // IXON is a bitflag that enables ctrl-s and ctrl-q, which are used to pause and resume data transmission. we can now recieve ctrl-s and ctrl-q as input.
     raw.c_lflag &= ~(ECHO | ICANON | ISIG);
 
-    // ICANON & ISIG comes from <termios.h> 
+    // ICANON & ISIG comes from <termios.h>
     // ICANNO is a bitflag that enables canonical mode.
     // ISIG is a bitflag that allows the program to receive signals like ctrl-c and ctrl-z.
     // canonical mode is the mode where the input is line by line, and the input is only sent to the program after the user presses enter.
