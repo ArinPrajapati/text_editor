@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <errno.h>
+#include <sys/ioctl.h>
 
 // carrage return is the character that moves the cursor to the beginning of the line.
 
@@ -17,8 +18,12 @@
 // the CTRL_KEY('key') macro is used to take a character and bitwise-AND it with 00011111, which is 31 in decimal, to get the control key value.
 
 /*** data ***/
+
+// global struct to store the editor configuration.
 struct editorConfig
 {
+    int screenrows;
+    int screencols;
     struct termios orig_termios;
 };
 
@@ -107,6 +112,26 @@ char editorReadKey()
     return c;
 }
 
+int getWindowsSize(int *rows, int *cols)
+{
+    struct winsize ws;
+
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)
+    {
+        return -1;
+    }
+    // ioctl() , TIOCGWINSZ, winsize all come from <sys/ioctl.h>
+    // the ioctl() function is used to get the size of the terminal.
+    // TIOCGWINSZ is a command that gets the window size.
+    // ws.ws_col is the number of columns in the terminal.
+    // ws.ws_row is the number of rows in the terminal.
+    else
+    {
+        *cols = ws.ws_col;
+        *rows = ws.ws_row;
+        return 0;
+    }
+}
 /** input ***/
 
 void editorProcessKeypress()
@@ -131,7 +156,7 @@ void editorDrawRows()
 
     // this loop is to draw the rows of tildes.
     int y;
-    for (y = 0; y < 24; y++)
+    for (y = 0; y < E.screenrows; y++)
     {
         write(STDOUT_FILENO, "~\r\n", 3);
     }
@@ -153,10 +178,19 @@ void editorRefreshScreen()
 }
 
 /** init */
+
+void initEditor()
+{
+    if (getWindowsSize(&E.screenrows, &E.screencols) == -1)
+        die("getWindowSize");
+}
+
+// initEditor()’s job will be to initialize all the fields in the E struct.
+
 int main()
 {
     enableRawMode();
-
+    initEditor();
     while (1)
     {
         editorRefreshScreen();
