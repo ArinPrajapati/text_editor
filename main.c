@@ -2,6 +2,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <ctype.h>
 
 //  struct termios, tcgetattr(), tcsetattr(), ECHO, and TCSAFLUSH all come from <termios.h>.
 
@@ -18,9 +19,11 @@ void enableRawMode()
     // atexit() comes from <stdlib.h> and is used to register a function to be called when the program exits.
     atexit(disableRawMode);
     struct termios raw = orig_termios;
-    raw.c_lflag &= ~(ECHO | ICANON);
+    raw.c_lflag &= ~(ECHO | ICANON | ISIG);
 
-    //  ICANON comes from <termios.h> and is a bitflag that enables canonical mode.
+    // ICANON & ISIG comes from <termios.h> 
+    // ICANNO is a bitflag that enables canonical mode.
+    // ISIG is a bitflag that allows the program to receive signals like ctrl-c and ctrl-z.
     // canonical mode is the mode where the input is line by line, and the input is only sent to the program after the user presses enter.
 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
