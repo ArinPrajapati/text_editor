@@ -11,6 +11,11 @@
 
 //  struct termios, tcgetattr(), tcsetattr(), ECHO, and TCSAFLUSH all come from <termios.h>.
 
+/** defines */
+// #define is used to create a macro, which is a constant value that can be used in place of a variable.
+#define CTRL_KEY(k) ((k) & 0x1f)
+// the CTRL_KEY('key') macro is used to take a character and bitwise-AND it with 00011111, which is 31 in decimal, to get the control key value.
+
 /*** data ***/
 
 struct termios orig_termios;
@@ -82,6 +87,36 @@ void enableRawMode()
         die("tcsetattr");
 }
 
+char editorReadKey()
+{
+    // editorReadKey() is to read a single keypress from the user and return it.
+
+    int nread;
+    char c;
+    while ((nread = read(STDIN_FILENO, &c, 1) != 1))
+    {
+        if (nread == -1 && errno != EAGAIN)
+            die("read");
+    }
+    return c;
+}
+
+/** input ***/
+
+void editorProcessKeypress()
+{
+    //  editorProcessKeypress() is to process the keypresses that the editor reads.
+
+    char c = editorReadKey();
+
+    switch (c)
+    {
+    case CTRL_KEY('q'):
+        exit(0);
+        break;
+    }
+}
+
 /** init */
 int main()
 {
@@ -89,33 +124,7 @@ int main()
 
     while (1)
     {
-        char c = '\0';
-        // read() and STDIN_FILENO comes from  usinstd.h ,
-        // the line below read bytes from standard input into the varibale c , and keep doing till there is no bytes to read
-        // read() comes from <unistd.h> and is used to read bytes from a file descriptor.
-        // errno comes from <errno.h> and is used to store the error code.
-        // EAGAIN comes from <errno.h> and is the error code for "resource temporarily unavailable".
-
-        if (read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN)
-            die("read");
-        // iscrtl() comes from <ctype.h>
-        // iscrtl() checks if the character is a control character.
-        // control characters are characters that are not printable, like backspace, enter, and escape.
-        if (iscntrl(c))
-        {
-            // for control characters, we print the ascii value of the character in the format of ^<char>.
-            // for example, ^C is ctrl-c.
-            // \r is carriage return, and \n is newline.
-            printf("%d\r\n", c);
-        }
-        else
-        {
-            // printf() comes from <stdio.h> and is used to print formatted output to the terminal.
-            // %d tell it to format the byte as a decimal number, and %c tells it to format the byte as a character.
-            printf("%d ('%c')\r\n", c, c);
-        }
-        if (c == 'q')
-            break;
+        editorProcessKeypress();
     };
     return 0;
 }
