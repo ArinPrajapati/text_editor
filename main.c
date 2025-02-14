@@ -112,13 +112,58 @@ char editorReadKey()
     return c;
 }
 
+int getCursorPosition(int *rows, int *cols)
+{
+
+    char buf[32];
+    unsigned int i = 0;
+
+    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4)
+        return -1;
+
+    while (i < sizeof(buf) - 1)
+    {
+        // this loop is to read the response from the terminal.
+        // the response is in the form of \x1b[24;80R
+        // the 24 is the row number and the 80 is the column number.
+        if (read(STDIN_FILENO, &buf[i], 1) != 1)
+        {
+            // read() is used to read from the terminal.
+            break;
+        }
+        if (buf[i] == 'R')
+        {
+            break;
+        }
+        i++;
+    }
+
+    buf[i] = '\0';
+    // the \0 character is used to terminate the string.
+
+    printf("\r\n&buf[1]: '%s'\r\n", &buf[1]);
+    // printtf("%s", &buf[1]) is used to print the row and column number.
+    // the &buf[1] is used to print the row and column number without the escape character.
+
+    editorReadKey();
+
+    return -1;
+}
+
 int getWindowsSize(int *rows, int *cols)
 {
     struct winsize ws;
 
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)
+    if (1 || ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)
     {
-        return -1;
+        if (write(STDOUT_FILENO, "\x1b[99C\x1b[999B", 12) != 12)
+            return -1;
+        // the write() function is used to write to the terminal.
+        // STDOUT_FILENO is a file descriptor that represents standard output.
+        // \x1b is the escape character.
+        // [99C is the escape sequence to move the cursor 99 columns to the right.]
+        // [999B is the escape sequence to move the cursor 999 rows down.]
+        return getCursorPosition(rows, cols);
     }
     // ioctl() , TIOCGWINSZ, winsize all come from <sys/ioctl.h>
     // the ioctl() function is used to get the size of the terminal.
@@ -132,6 +177,7 @@ int getWindowsSize(int *rows, int *cols)
         return 0;
     }
 }
+
 /** input ***/
 
 void editorProcessKeypress()
