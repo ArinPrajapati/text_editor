@@ -20,11 +20,26 @@
 
 #define TEXT_EDITOR_VERSION "0.0.1"
 
+enum editorKey
+{
+    Arrow_Left = 1000,
+    Arrow_Right,
+    Arrow_Up,
+    Arrow_Down,
+    Del_Key,
+    HOME_KEY,
+    END_KEY,
+    Page_Up,
+    Page_Down,
+};
+
 /*** data ***/
 
 // global struct to store the editor configuration.
 struct editorConfig
 {
+    int cx, cy;
+    // cx and cy are the x and y coordinates of the cursor.
     int screenrows;
     int screencols;
     struct termios orig_termios;
@@ -101,18 +116,86 @@ void enableRawMode()
         die("tcsetattr");
 }
 
-char editorReadKey()
+int editorReadKey()
 {
     // editorReadKey() is to read a single keypress from the user and return it.
 
     int nread;
     char c;
-    while ((nread = read(STDIN_FILENO, &c, 1) != 1))
+    while ((nread = read(STDIN_FILENO, &c, 1)) != 1)
     {
         if (nread == -1 && errno != EAGAIN)
             die("read");
     }
-    return c;
+    if (c == '\x1b')
+    {
+        char seq[3];
+        if (read(STDIN_FILENO, &seq[0], 1) != 1)
+            return '\x1b';
+        if (read(STDIN_FILENO, &seq[1], 1) != 1)
+            return '\x1b';
+        if (seq[0] == '[')
+        {
+            if (seq[1] >= '0' && seq[1] <= '9')
+            {
+                if (read(STDIN_FILENO, &seq[2], 1) != 1)
+                    return '\x1b';
+                if (seq[2] == '~')
+                {
+                    switch (seq[1])
+                    {
+                    case '1':
+                        return HOME_KEY;
+                    case '3':
+                        return Del_Key;
+                    case '4':
+                        return END_KEY;
+                    case '5':
+                        return Page_Up;
+                    case '6':
+                        return Page_Down;
+                    case '7':
+                        return HOME_KEY;
+                    case '8':
+                        return END_KEY;
+                    }
+                }
+            }
+            else
+            {
+                switch (seq[1])
+                {
+                case 'A':
+                    return Arrow_Up;
+                case 'B':
+                    return Arrow_Down;
+                case 'C':
+                    return Arrow_Right;
+                case 'D':
+                    return Arrow_Left;
+                case 'H':
+                    return HOME_KEY;
+                case 'F':
+                    return END_KEY;
+                }
+            }
+        }
+        else if (seq[0] == 'O')
+        {
+            switch (seq[1])
+            {
+            case 'H':
+                return HOME_KEY;
+            case 'F':
+                return END_KEY;
+            }
+        }
+        return '\x1b';
+    }
+    else
+    {
+        return c;
+    }
 }
 
 int getCursorPosition(int *rows, int *cols)
@@ -220,11 +303,43 @@ void abFree(struct abuf *ab)
 
 /** input ***/
 
+void editorMoveCursor(int key)
+{
+    switch (key)
+    {
+    case Arrow_Left:
+        if (E.cx != 0)
+        {
+            E.cx--;
+        }
+        break;
+    case Arrow_Right:
+        if (E.cx != E.screencols - 1)
+        {
+            E.cx++;
+        }
+        break;
+    case Arrow_Up:
+        if (E.cy != 0)
+        {
+            E.cy--;
+        }
+        break;
+
+    case Arrow_Down:
+        if (E.cy != E.screenrows - 1)
+        {
+            E.cy++;
+        }
+        break;
+    }
+}
+
 void editorProcessKeypress()
 {
     //  editorProcessKeypress() is to process the keypresses that the editor reads.
 
-    char c = editorReadKey();
+    int c = editorReadKey();
 
     switch (c)
     {
@@ -232,6 +347,31 @@ void editorProcessKeypress()
         write(STDOUT_FILENO, "\x1b[2J", 4);
         write(STDOUT_FILENO, "\x1b[H", 3);
         exit(0);
+        break;
+
+    case HOME_KEY:
+        E.cx = 0;
+        break;
+    case END_KEY:
+        E.cx = E.screencols - 1;
+        break;
+
+    case Page_Up:
+    case Page_Down:
+    {
+        int times = E.screenrows;
+        while (times--)
+        {
+            editorMoveCursor(c == Page_Up ? Arrow_Up : Arrow_Down);
+        }
+    }
+    break;
+
+    case Arrow_Down:
+    case Arrow_Up:
+    case Arrow_Left:
+    case Arrow_Right:
+        editorMoveCursor(c);
         break;
     }
 }
@@ -290,12 +430,20 @@ void editorRefreshScreen()
     // '2J' command is used to clear the screen.
     // the \x1b is the escape character.
     // This escape sequence is only 4 bytes long, and uses the J command (Erase In Display) to clear the screen.
-    abAppend(&ab, "\x1b[H", 3);
     // 'H' command is used to position the cursor.
     // \x1b is the escape character.
     // This escape sequence is only 3 bytes long, and uses the H command (Cursor Position) to position the cursor.
 
     editorDrawRows(&ab);
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+    // the snprintf() function is used to print a formatted string to a buffer.
+    // the \x1b is the escape character, and the [ is the left bracket character.
+    // the %d is a placeholder for a number.
+    // the ; is the semicolon character.
+    // the H is the command to position the cursor.
+    abAppend(&ab, buf, strlen(buf));
 
     abAppend(&ab, "\x1b[H", 3);
     abAppend(&ab, "\x1b[?25h", 6);
@@ -311,6 +459,8 @@ void editorRefreshScreen()
 
 void initEditor()
 {
+    E.cx = 0;
+    E.cy = 0;
     if (getWindowsSize(&E.screenrows, &E.screencols) == -1)
         die("getWindowSize");
 }
