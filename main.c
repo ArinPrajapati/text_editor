@@ -367,6 +367,7 @@ void abFree(struct abuf *ab)
 
 void editorMoveCursor(int key)
 {
+    erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
     switch (key)
     {
     case Arrow_Left:
@@ -376,7 +377,7 @@ void editorMoveCursor(int key)
         }
         break;
     case Arrow_Right:
-        if (E.cx != E.screencols - 1)
+        if (row && E.cx < row->size)
         {
             E.cx++;
         }
@@ -450,6 +451,15 @@ void editorScroll()
     {
         E.rowoff = E.cy - E.screenrows + 1;
     }
+
+    if (E.cx < E.coloff)
+    {
+        E.coloff = E.cx;
+    }
+    if (E.cx >= E.coloff + E.screencols)
+    {
+        E.coloff = E.cx - E.screencols + 1;
+    }
 }
 
 void editorDrawRows(struct abuf *ab)
@@ -490,10 +500,12 @@ void editorDrawRows(struct abuf *ab)
         }
         else
         {
-            int len = E.row[filerow].size;
-            if (len > E.screenrows)
+            int len = E.row[filerow].size - E.coloff;
+            if (len < 0)
+                len = 0;
+            if (len > E.screencols)
                 len = E.screencols;
-            abAppend(ab, E.row[filerow].chars, len);
+            abAppend(ab, &E.row[filerow].chars[E.coloff], len);
         }
         abAppend(ab, "\x1b[K", 3);
         // the 'K' command is used to clear the line.
@@ -528,7 +540,7 @@ void editorRefreshScreen()
     editorDrawRows(&ab);
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1);
     // the snprintf() function is used to print a formatted string to a buffer.
     // the \x1b is the escape character, and the [ is the left bracket character.
     // the %d is a placeholder for a number.
