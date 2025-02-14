@@ -141,20 +141,22 @@ int getCursorPosition(int *rows, int *cols)
     buf[i] = '\0';
     // the \0 character is used to terminate the string.
 
-    printf("\r\n&buf[1]: '%s'\r\n", &buf[1]);
-    // printtf("%s", &buf[1]) is used to print the row and column number.
-    // the &buf[1] is used to print the row and column number without the escape character.
+    if (buf[0] != '\x1b' || buf[1] != '[')
+        return -1;
 
-    editorReadKey();
+    if (sscanf(&buf[2], "%d;%d", rows, cols) != 2)
+        return -1;
+    // this is to parse the row and column numbers from the response.
+    // sscanf() is used to parse the response.
 
-    return -1;
+    return 0;
 }
 
 int getWindowsSize(int *rows, int *cols)
 {
     struct winsize ws;
 
-    if (1 || ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)
     {
         if (write(STDOUT_FILENO, "\x1b[99C\x1b[999B", 12) != 12)
             return -1;
