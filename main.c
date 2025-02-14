@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <string.h>
 
 // carrage return is the character that moves the cursor to the beginning of the line.
 
@@ -16,6 +17,8 @@
 // #define is used to create a macro, which is a constant value that can be used in place of a variable.
 #define CTRL_KEY(k) ((k) & 0x1f)
 // the CTRL_KEY('key') macro is used to take a character and bitwise-AND it with 00011111, which is 31 in decimal, to get the control key value.
+
+#define TEXT_EDITOR_VERSION "0.0.1"
 
 /*** data ***/
 
@@ -180,6 +183,41 @@ int getWindowsSize(int *rows, int *cols)
     }
 }
 
+//** append buff */
+
+struct abuf
+{
+    char *b;
+    int len;
+};
+
+#define ABUF_INIT {NULL, 0}
+
+// {NULL, 0} is the initializer for the abuf struct.
+// the abuf struct is used to store the buffer and the length of the buffer.
+
+void abAppend(struct abuf *ab, const char *s, int len)
+{
+    char *new = realloc(ab->b, ab->len + len);
+    // the realloc() function is used to allocate memory.
+    // the ab->b is the buffer.
+    // the ab->len is the length of the buffer.
+    // the len is the length of the string.
+
+    if (new == NULL)
+        return;
+
+    memcpy(&new[ab->len], s, len);
+    // the memcpy() function is used to copy memory from one location to another.
+    ab->b = new;
+    ab->len += len;
+}
+
+void abFree(struct abuf *ab)
+{
+    free(ab->b);
+}
+
 /** input ***/
 
 void editorProcessKeypress()
@@ -199,30 +237,74 @@ void editorProcessKeypress()
 }
 
 /** output */
-void editorDrawRows()
+void editorDrawRows(struct abuf *ab)
 {
 
     // this loop is to draw the rows of tildes.
     int y;
+
     for (y = 0; y < E.screenrows; y++)
     {
-        write(STDOUT_FILENO, "~\r\n", 3);
+        if (y == E.screenrows / 3)
+        {
+            char welcome[80];
+            int welcomeLen = snprintf(welcome, sizeof(welcome), "Text Editor -- version %s", TEXT_EDITOR_VERSION);
+            if (welcomeLen > E.screencols)
+            {
+                welcomeLen = E.screencols;
+            }
+
+            int padding = (E.screencols - welcomeLen) / 2;
+            if (padding)
+            {
+                abAppend(ab, "~", 1);
+                padding--;
+            }
+            while (padding--)
+                abAppend(ab, " ", 1);
+            abAppend(ab, welcome, welcomeLen);
+        }
+        else
+        {
+            abAppend(ab, "~", 1);
+        }
+        abAppend(ab, "\x1b[K", 3);
+        // the 'K' command is used to clear the line.
+        if (y < E.screenrows - 1)
+        {
+            abAppend(ab, "\r\n", 2);
+        }
+        // this if statement is to check if we are on the last row.
+        // if we are not on the last row, we print a newline character.
     }
 }
 
 void editorRefreshScreen()
 {
-    write(STDOUT_FILENO, "\x1b[2J", 4);
+    struct abuf ab = ABUF_INIT;
+
+    abAppend(&ab, "\x1b[?25l", 6);
+    // the 'l' command is used to hide the cursor.
+    // the \x1b is the escape character. this is to hide the cursor.
+    // abAppend(&ab, "\x1b[2J", 4);
+    // '2J' command is used to clear the screen.
+    // the \x1b is the escape character.
+    // This escape sequence is only 4 bytes long, and uses the J command (Erase In Display) to clear the screen.
+    abAppend(&ab, "\x1b[H", 3);
+    // 'H' command is used to position the cursor.
     // \x1b is the escape character.
-    // there is 4 in the end because the escape sequence is 4 bytes long.
-    // the write() function is used to write to the terminal.
-    // STDOUT_FILENO is a file descriptor that represents standard output.
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    // This escape sequence is only 3 bytes long, and uses the H command (Cursor Position) to position the cursor.
+
+    editorDrawRows(&ab);
+
+    abAppend(&ab, "\x1b[H", 3);
+    abAppend(&ab, "\x1b[?25h", 6);
+
     // \x1b is the escape character.
     // This escape sequence is only 3 bytes long, and uses the H command (Cursor Position) to position the cursor. The H command actually takes two arguments: the row number and the column number at which to position the cursor.
 
-    editorDrawRows();
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    write(STDOUT_FILENO, ab.b, ab.len);
+    abFree(&ab);
 }
 
 /** init */
