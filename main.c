@@ -13,6 +13,8 @@
 #include <sys/ioctl.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
+#include <stdarg.h>
 
 // carrage return is the character that moves the cursor to the beginning of the line.
 
@@ -63,6 +65,9 @@ struct editorConfig
 
     int numrows;
     erow *row;
+    char *filename;
+    char statusmsg[80];
+    time_t statusmsg_time;
     struct termios orig_termios;
 };
 
@@ -366,6 +371,10 @@ void editorAppendRows(char *s, size_t len)
 
 void editorOpen(char *filename)
 {
+    free(E.filename);
+    E.filename = strdup(filename);
+
+    // strdup() is used to duplicate a string.
     FILE *fp = fopen(filename, "r");
     if (!fp)
     {
@@ -610,6 +619,50 @@ void editorDrawRows(struct abuf *ab)
     // if we are not on the last row, we print a newline character.
 }
 
+void editorDrawStatusBar(struct abuf *ab)
+{
+
+    // this function is to draw the status bar.
+    // 7m is the command to invert the colors.
+    abAppend(ab, "\x1b[7m", 4);
+    char status[90], rstatus[90]; /// this number is the length of the status bar.
+    int len = snprintf(status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]", E.numrows);
+    int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.cy + 1, E.numrows);
+    if (len > E.screencols)
+        len = E.screencols;
+    abAppend(ab, status, len);
+    while (len < E.screencols)
+    {
+        if (E.screencols - len == rlen)
+        {
+            abAppend(ab, rstatus, rlen);
+            break;
+        }
+        else
+        {
+            abAppend(ab, " ", 1);
+            len++;
+        }
+    }
+
+    abAppend(ab, "\x1b[m", 3);
+    // the 'm' command is used to turn off the color inversion.
+    abAppend(ab, "\r\n", 2);
+}
+
+void editorDrawMessageBar(struct abuf *ab)
+{
+    abAppend(ab, "\x1b[K", 3);
+
+    int msglen = strlen(E.statusmsg);
+    if (msglen > E.screencols)
+        msglen = E.screencols;
+    if (msglen && time(NULL) - E.statusmsg_time < 5)
+    {
+        abAppend(ab, E.statusmsg, msglen);
+    }
+}
+
 void editorRefreshScreen()
 {
     editorScroll();
@@ -630,6 +683,8 @@ void editorRefreshScreen()
     // This escape sequence is only 3 bytes long, and uses the H command (Cursor Position) to position the cursor.
 
     editorDrawRows(&ab);
+    editorDrawStatusBar(&ab);
+    editorDrawMessageBar(&ab);
 
     char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
@@ -649,6 +704,20 @@ void editorRefreshScreen()
     abFree(&ab);
 }
 
+void editorSetStatusMessage(const char *fmt, ...)
+{
+    // va_list, va_start(), vsnprintf(), and va_end() all come from <stdarg.h>.
+    // va_list is a type to hold information about variable arguments.
+    // va_start() is a macro to initialize the va_list.
+    // vsnprintf() is a function to format a string.
+
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+    va_end(ap);
+    E.statusmsg_time = time(NULL);
+}
 /** init */
 
 void initEditor()
@@ -660,10 +729,14 @@ void initEditor()
     E.coloff = 0;
     E.numrows = 0;
     E.row = NULL;
+    E.filename = NULL;
+    E.statusmsg[0] = '\0';
+    E.statusmsg_time = 0;
+
     if (getWindowsSize(&E.screenrows, &E.screencols) == -1)
         die("getWindowSize");
 
-    E.screenrows -= 1;
+    E.screenrows -= 2;
 }
 
 // initEditor()’s job will be to initialize all the fields in the E struct.
@@ -676,6 +749,8 @@ int main(int argc, char *argv[])
     {
         editorOpen(argv[1]);
     }
+
+    editorSetStatusMessage("HELP: Ctrl-Q = quit");
     while (1)
     {
         editorRefreshScreen();
