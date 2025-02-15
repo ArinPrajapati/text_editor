@@ -24,6 +24,7 @@
 // the CTRL_KEY('key') macro is used to take a character and bitwise-AND it with 00011111, which is 31 in decimal, to get the control key value.
 
 #define TEXT_EDITOR_VERSION "0.0.1"
+#define TEXT_EDITOR_TAB_STOP 8
 
 enum editorKey
 {
@@ -286,6 +287,41 @@ int getWindowsSize(int *rows, int *cols)
 }
 
 /** row operations */
+void editorUpdateRow(erow *row)
+{
+
+    int tabs = 0;
+
+    int j;
+
+    for (j = 0; j < row->size; j++)
+    {
+        if (row->chars[j] == '\t')
+            tabs++;
+    }
+
+    free(row->render);
+    row->render = malloc(row->size + tabs * (TEXT_EDITOR_TAB_STOP - 1) + 1);
+
+    int idx = 0;
+
+    for (j = 0; j < row->size; j++)
+    {
+        if (row->chars[j] == '\t')
+        {
+            row->render[idx++] = ' ';
+            while (idx % (TEXT_EDITOR_TAB_STOP - 1) != 0)
+                row->render[idx++] = ' ';
+        }
+        else
+        {
+            row->render[idx++] = row->chars[j];
+        }
+    }
+    row->render[idx] = '\0';
+    row->rsize = idx;
+}
+
 void editorAppendRows(char *s, size_t len)
 {
     erow *new_row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
@@ -302,6 +338,11 @@ void editorAppendRows(char *s, size_t len)
 
     memcpy(E.row[at].chars, s, len);
     E.row[at].chars[len] = '\0';
+
+    E.row[at].rsize = 0;
+    E.row[at].render = NULL;
+    editorUpdateRow(&E.row[at]);
+
     E.numrows++;
 }
 
@@ -520,12 +561,12 @@ void editorDrawRows(struct abuf *ab)
         }
         else
         {
-            int len = E.row[filerow].size - E.coloff;
+            int len = E.row[filerow].rsize - E.coloff;
             if (len < 0)
                 len = 0;
             if (len > E.screencols)
                 len = E.screencols;
-            abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+            abAppend(ab, &E.row[filerow].render[E.coloff], len);
         }
         abAppend(ab, "\x1b[K", 3);
         // the 'K' command is used to clear the line.
