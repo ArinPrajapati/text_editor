@@ -30,6 +30,7 @@
 
 enum editorKey
 {
+    Back_Space = 127,
     Arrow_Left = 1000,
     Arrow_Right,
     Arrow_Up,
@@ -367,7 +368,68 @@ void editorAppendRows(char *s, size_t len)
     E.numrows++;
 }
 
+void editorRowInsertChar(erow *row, int at, int c)
+{
+    if (at < 0 || at > row->size)
+    {
+        at = row->size;
+    }
+
+    row->chars = realloc(row->chars, row->size + 2);
+    // the realloc() function is used to allocate memory.
+    // the row->chars is the buffer.
+    // the row->size is the length of the buffer.
+
+    memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+    // the memmove() function is used to copy memory from one location to another.
+    // the &row->chars[at + 1] is the destination.
+    // the &row->chars[at] is the source.
+    // the row->size - at + 1 is the number of bytes to copy.
+    row->size++;
+    row->chars[at] = c;
+    editorUpdateRow(row);
+}
+
+/*** editor operations */
+
+void editorInsertChars(int c)
+{
+    if (E.cy == E.numrows)
+    {
+        // the E.cy is the y coordinate of the cursor.
+        // the E.numrows is the number of rows.
+        // if both are equal, we append a new row.
+        editorAppendRows("", 0);
+    }
+    editorRowInsertChar(&E.row[E.cy], E.cx, c);
+    E.cx++;
+}
+
 /*** file i/o */
+
+char *editorRowsString(int *buflen)
+{
+    int totlen = 0;
+    int j;
+    for (j = 0; j < E.numrows; j++)
+    {
+        totlen += E.row[j].size + 1;
+    }
+    *buflen = totlen;
+
+    char *buf = malloc(totlen);
+    char *p = buf;
+
+    for (j = 0; j < E.numrows; j++)
+    {
+        memcpy(p, E.row[j].chars, E.row[j].size);
+        p += E.row[j].size;
+        *p = '\n';
+        p++;
+    }
+
+    return buf;
+}
 
 void editorOpen(char *filename)
 {
@@ -492,6 +554,11 @@ void editorProcessKeypress()
 
     switch (c)
     {
+
+    case '\r':
+        // the '\r' character is the carriage return character.
+        break;
+
     case CTRL_KEY('q'):
         write(STDOUT_FILENO, "\x1b[2J", 4);
         write(STDOUT_FILENO, "\x1b[H", 3);
@@ -504,6 +571,12 @@ void editorProcessKeypress()
     case END_KEY:
         if (E.cy < E.numrows)
             E.cx = E.row[E.cy].size;
+        break;
+
+    case Back_Space:
+    case CTRL_KEY('h'):
+    case Del_Key:
+
         break;
 
     case Page_Up:
@@ -532,6 +605,14 @@ void editorProcessKeypress()
     case Arrow_Left:
     case Arrow_Right:
         editorMoveCursor(c);
+        break;
+
+    case CTRL_KEY('l'):
+    case '\x1b':
+        break;
+
+    default:
+        editorInsertChars(c);
         break;
     }
 }
