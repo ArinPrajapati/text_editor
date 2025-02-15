@@ -493,12 +493,23 @@ void editorProcessKeypress()
         E.cx = 0;
         break;
     case END_KEY:
-        E.cx = E.screencols - 1;
+        if (E.cy < E.numrows)
+            E.cx = E.row[E.cy].size;
         break;
 
     case Page_Up:
     case Page_Down:
     {
+        if (c == Page_Up)
+        {
+            E.cy = E.rowoff;
+        }
+        else if (c == Page_Down)
+        {
+            E.cy = E.rowoff + E.screenrows - 1;
+            if (E.cy > E.numrows)
+                E.cy = E.numrows;
+        }
         int times = E.screenrows;
         while (times--)
         {
@@ -593,13 +604,10 @@ void editorDrawRows(struct abuf *ab)
         }
         abAppend(ab, "\x1b[K", 3);
         // the 'K' command is used to clear the line.
-        if (y < E.screenrows - 1)
-        {
-            abAppend(ab, "\r\n", 2);
-        }
-        // this if statement is to check if we are on the last row.
-        // if we are not on the last row, we print a newline character.
+        abAppend(ab, "\r\n", 2);
     }
+    // this if statement is to check if we are on the last row.
+    // if we are not on the last row, we print a newline character.
 }
 
 void editorRefreshScreen()
@@ -654,6 +662,8 @@ void initEditor()
     E.row = NULL;
     if (getWindowsSize(&E.screenrows, &E.screencols) == -1)
         die("getWindowSize");
+
+    E.screenrows -= 1;
 }
 
 // initEditor()’s job will be to initialize all the fields in the E struct.
