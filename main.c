@@ -43,7 +43,9 @@ enum editorKey
 typedef struct erow
 {
     int size;
+    int rsize;
     char *chars;
+    char *render;
 
 } erow;
 
@@ -375,11 +377,21 @@ void editorMoveCursor(int key)
         {
             E.cx--;
         }
+        else if (E.cy > 0)
+        {
+            E.cy--;
+            E.cx = E.row[E.cy].size;
+        }
         break;
     case Arrow_Right:
         if (row && E.cx < row->size)
         {
             E.cx++;
+        }
+        else if (row && E.cx == row->size)
+        {
+            E.cy++;
+            E.cx = 0;
         }
         break;
     case Arrow_Up:
@@ -395,6 +407,14 @@ void editorMoveCursor(int key)
             E.cy++;
         }
         break;
+    }
+
+    row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+    int rowlen = row ? row->size : 0;
+
+    if (E.cx > rowlen)
+    {
+        E.cx = rowlen;
     }
 }
 
