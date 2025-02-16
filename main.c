@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <stdarg.h>
+#include <fcntl.h> // for open() function
 
 // carrage return is the character that moves the cursor to the beginning of the line.
 
@@ -458,6 +459,46 @@ void editorOpen(char *filename)
     fclose(fp);
 }
 
+void editorSave()
+{
+    if (E.filename == NULL)
+        return;
+
+    int len;
+    char *buf = editorRowsString(&len);
+
+    int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+
+    // open is a system call that opens a file.
+    // the O_RDWR flag is used to open the file for reading and writing.
+    // the O_CREAT flag is used to create the file if it does not exist.
+    // the 0644 is the file permissions.
+    // which is read and write for the user, and read for the group and others.
+
+    if (fd != -1)
+    {
+        // ftruncate() is used to truncate a file to a specified length.
+        // the fd is the file descriptor.
+        // len is the length of the file.
+        if (ftruncate(fd, len) != 1)
+        {
+            // write() is used to write to a file.
+            // the fd is the file descriptor.
+            // the buf is the buffer of data.
+            // the len is the length of the data.
+
+            if (write(fd, buf, len) == len)
+            {
+                close(fd);
+                free(buf);
+                return;
+            }
+        }
+        close(fd);
+    }
+    free(buf);
+}
+
 //** append buff */
 
 struct abuf
@@ -565,6 +606,10 @@ void editorProcessKeypress()
         exit(0);
         break;
 
+    case CTRL_KEY('s'):
+        editorSave();
+        break;
+
     case HOME_KEY:
         E.cx = 0;
         break;
@@ -574,7 +619,7 @@ void editorProcessKeypress()
         break;
 
     case Back_Space:
-    case CTRL_KEY('h'):
+    case CTRL_KEY('h'): // the 'h' character is the backspace character.
     case Del_Key:
 
         break;
@@ -608,7 +653,7 @@ void editorProcessKeypress()
         break;
 
     case CTRL_KEY('l'):
-    case '\x1b':
+    case '\x1b': // this is the escape character.
         break;
 
     default:
