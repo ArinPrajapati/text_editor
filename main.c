@@ -28,6 +28,10 @@
 
 #define TEXT_EDITOR_VERSION "0.0.1"
 #define TEXT_EDITOR_TAB_STOP 8
+#define EDITOR_QUIT_TIMES 3
+
+/** function prototypes **/
+void editorSetStatusMessage(const char *fmt, ...);
 
 enum editorKey
 {
@@ -67,6 +71,7 @@ struct editorConfig
 
     int numrows;
     erow *row;
+    int dirty;
     char *filename;
     char statusmsg[80];
     time_t statusmsg_time;
@@ -367,6 +372,7 @@ void editorAppendRows(char *s, size_t len)
     editorUpdateRow(&E.row[at]);
 
     E.numrows++;
+    E.dirty++;
 }
 
 void editorRowInsertChar(erow *row, int at, int c)
@@ -389,6 +395,7 @@ void editorRowInsertChar(erow *row, int at, int c)
     row->size++;
     row->chars[at] = c;
     editorUpdateRow(row);
+    E.dirty++;
 }
 
 /*** editor operations */
@@ -457,6 +464,7 @@ void editorOpen(char *filename)
     }
     free(line);
     fclose(fp);
+    E.dirty = 0;
 }
 
 void editorSave()
@@ -491,12 +499,15 @@ void editorSave()
             {
                 close(fd);
                 free(buf);
+                E.dirty = 0;
+                editorSetStatusMessage("%d bytes written to disk", len);
                 return;
             }
         }
         close(fd);
     }
     free(buf);
+    editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
 //** append buff */
@@ -535,6 +546,21 @@ void abFree(struct abuf *ab)
 }
 
 /** input ***/
+
+void editorSetStatusMessage(const char *fmt, ...)
+{
+    // va_list, va_start(), vsnprintf(), and va_end() all come from <stdarg.h>.
+    // va_list is a type to hold information about variable arguments.
+    // va_start() is a macro to initialize the va_list.
+    // vsnprintf() is a function to format a string.
+
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+    va_end(ap);
+    E.statusmsg_time = time(NULL);
+}
 
 void editorMoveCursor(int key)
 {
@@ -589,8 +615,10 @@ void editorMoveCursor(int key)
 
 void editorProcessKeypress()
 {
+
     //  editorProcessKeypress() is to process the keypresses that the editor reads.
 
+    static int quit_times = EDITOR_QUIT_TIMES;
     int c = editorReadKey();
 
     switch (c)
@@ -601,6 +629,13 @@ void editorProcessKeypress()
         break;
 
     case CTRL_KEY('q'):
+
+        if (E.dirty && quit_times > 0)
+        {
+            editorSetStatusMessage("WARNING!!! File has unsaved changes. Press Ctrl-Q %d more times to quit.", quit_times);
+            quit_times--;
+            return;
+        }
         write(STDOUT_FILENO, "\x1b[2J", 4);
         write(STDOUT_FILENO, "\x1b[H", 3);
         exit(0);
@@ -660,6 +695,8 @@ void editorProcessKeypress()
         editorInsertChars(c);
         break;
     }
+
+    quit_times = EDITOR_QUIT_TIMES;
 }
 
 /** output */
@@ -752,7 +789,7 @@ void editorDrawStatusBar(struct abuf *ab)
     // 7m is the command to invert the colors.
     abAppend(ab, "\x1b[7m", 4);
     char status[90], rstatus[90]; /// this number is the length of the status bar.
-    int len = snprintf(status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]", E.numrows);
+    int len = snprintf(status, sizeof(status), "%.20s - %d lines %s", E.filename ? E.filename : "[No Name]", E.numrows, E.dirty ? "(modified)" : "");
     int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.cy + 1, E.numrows);
     if (len > E.screencols)
         len = E.screencols;
@@ -830,20 +867,6 @@ void editorRefreshScreen()
     abFree(&ab);
 }
 
-void editorSetStatusMessage(const char *fmt, ...)
-{
-    // va_list, va_start(), vsnprintf(), and va_end() all come from <stdarg.h>.
-    // va_list is a type to hold information about variable arguments.
-    // va_start() is a macro to initialize the va_list.
-    // vsnprintf() is a function to format a string.
-
-    va_list ap;
-
-    va_start(ap, fmt);
-    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
-    va_end(ap);
-    E.statusmsg_time = time(NULL);
-}
 /** init */
 
 void initEditor()
@@ -855,6 +878,7 @@ void initEditor()
     E.coloff = 0;
     E.numrows = 0;
     E.row = NULL;
+    E.dirty = 0;
     E.filename = NULL;
     E.statusmsg[0] = '\0';
     E.statusmsg_time = 0;
@@ -876,7 +900,7 @@ int main(int argc, char *argv[])
         editorOpen(argv[1]);
     }
 
-    editorSetStatusMessage("HELP: Ctrl-Q = quit");
+    editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
     while (1)
     {
         editorRefreshScreen();
