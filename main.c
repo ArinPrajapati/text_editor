@@ -375,6 +375,24 @@ void editorAppendRows(char *s, size_t len)
     E.dirty++;
 }
 
+void editorFreeRow(erow *row)
+{
+    free(row->render);
+    free(row->chars);
+}
+
+void editorDelRow(int at)
+{
+    if (at < 0 || at >= E.numrows)
+    {
+        return;
+    }
+    editorFreeRow(&E.row[at]);
+    memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
+    E.numrows--;
+    E.dirty++;
+}
+
 void editorRowInsertChar(erow *row, int at, int c)
 {
     if (at < 0 || at > row->size)
@@ -398,6 +416,29 @@ void editorRowInsertChar(erow *row, int at, int c)
     E.dirty++;
 }
 
+void editorRowAppendString(erow *row, char *s, size_t len)
+{
+    row->chars = realloc(row->chars, row->size + len + 1);
+    // we use realloc() to allocate memory for the new string. which is the old size + the length of the new string + 1 for the null terminator.
+    memcpy(&row->chars[row->size], s, len);
+    row->size += len;
+    row->chars[row->size] = '\0';
+    editorUpdateRow(row);
+    E.dirty++;
+}
+
+void editorRowDelChar(erow *row, int at)
+{
+    if (at < 0 || at >= row->size)
+        return;
+    memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+    // the memmove() function is used to copy memory from one location to another.
+    // we are overwriting the character at the cursor with the character after it. and then we are moving the rest of the characters to the left.
+    row->size--;
+    editorUpdateRow(row);
+    E.dirty++;
+}
+
 /*** editor operations */
 
 void editorInsertChars(int c)
@@ -413,6 +454,28 @@ void editorInsertChars(int c)
     E.cx++;
 }
 
+void editorDelChar()
+{
+    if (E.cy == E.numrows)
+        return;
+    if (E.cx == 0 && E.cy == 0)
+    {
+        return;
+    }
+    erow *row = &E.row[E.cy];
+    if (E.cx > 0)
+    {
+        editorRowDelChar(row, E.cx - 1);
+        E.cx--;
+    }
+    else
+    {
+        E.cx = E.row[E.cy - 1].size;
+        editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
+        editorDelRow(E.cy);
+        E.cy--;
+    }
+}
 /*** file i/o */
 
 char *editorRowsString(int *buflen)
@@ -656,7 +719,9 @@ void editorProcessKeypress()
     case Back_Space:
     case CTRL_KEY('h'): // the 'h' character is the backspace character.
     case Del_Key:
-
+        if (c == Del_Key)
+            editorMoveCursor(Arrow_Right);
+        editorDelChar();
         break;
 
     case Page_Up:
