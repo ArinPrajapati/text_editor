@@ -33,7 +33,7 @@
 /** function prototypes **/
 void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
-char *editorPrompt(char *prompt);
+char *editorPrompt(char *prompt, void (*callback)(char *, int));
 
 enum editorKey
 {
@@ -573,7 +573,7 @@ void editorSave()
 
     if (E.filename == NULL)
     {
-        E.filename = editorPrompt("Save as: %s (ESC to cancel)");
+        E.filename = editorPrompt("Save as: %s (ESC to cancel)", NULL);
         if (E.filename == NULL)
         {
             editorSetStatusMessage("Save aborted");
@@ -621,27 +621,76 @@ void editorSave()
 
 // find
 
-void editorFind()
+void editorFindCallBack(char *query, int key)
 {
-    char *query = editorPrompt("Search: %s (Use ESC to cancel | Arrows to navigate)");
-    if (query == NULL)
-        return;
+    static int last_match = -1;
+    // static is used to make a variable persist between function calls.
+    static int direction = 1;
 
-    int i;
-    for (i = 0; i < E.numrows; i++)
+    if (key == '\r' || key == '\x1b')
     {
-        erow *row = &E.row[i];
+        last_match = -1;
+        direction = 1;
+
+        return;
+    }
+    else if (key == Arrow_Right || key == Arrow_Down)
+    {
+        direction = 1;
+    }
+    else if (key == Arrow_Left || key == Arrow_Up)
+    {
+        direction = -1;
+    }
+    else
+    {
+        last_match = -1;
+        direction = 1;
+    }
+
+    if (last_match == -1)
+        direction = 1;
+
+    int current = last_match;
+
+    for (int i = 0; i < E.numrows; i++)
+    {
+        current += direction;
+        if (current == -1)
+            current = E.numrows - 1;
+        else if (current == E.numrows)
+            current = 0;
+        erow *row = &E.row[current];
         char *match = strstr(row->render, query);
         if (match)
         {
-            E.cy = i;
+            last_match = current;
+            E.cy = current;
             E.cx = editorRowRxToCx(row, match - row->render);
             E.rowoff = E.numrows;
             break;
         }
     }
+}
+void editorFind()
+{
+    int saved_cx = E.cx;
+    int saved_cy = E.cy;
+    int saved_colooff = E.coloff;
+    int saved_rowoff = E.rowoff;
 
-    free(query);
+    char *query = editorPrompt("Search: %s (Use ESC to cancel | Arrows to navigate ) ", editorFindCallBack);
+    if (query)
+    {
+        free(query);
+    }
+    else
+    {
+        E.cx = saved_cx;
+        E.cy = saved_cy;
+        E.coloff = saved_colooff;
+        E.rowoff = saved_rowoff;
+    }
 }
 
 //** append buff */
@@ -681,7 +730,7 @@ void abFree(struct abuf *ab)
 
 /** input ***/
 
-char *editorPrompt(char *prompt)
+char *editorPrompt(char *prompt, void (*callback)(char *, int))
 {
     size_t bufsize = 128;
     // size_t is an unsigned integer type that is used to represent the size of objects in bytes.
@@ -704,6 +753,8 @@ char *editorPrompt(char *prompt)
         else if (c == '\x1b')
         {
             editorSetStatusMessage("");
+            if (callback)
+                callback(buf, c);
             free(buf);
             return NULL;
         }
@@ -713,6 +764,9 @@ char *editorPrompt(char *prompt)
             if (buflen != 0)
             {
                 editorSetStatusMessage("");
+                if (callback)
+                    callback(buf, c);
+
                 return buf;
             }
         }
@@ -726,6 +780,9 @@ char *editorPrompt(char *prompt)
             buf[buflen++] = c;
             buf[buflen] = '\0';
         }
+
+        if (callback)
+            callback(buf, c);
     }
 }
 
@@ -961,7 +1018,20 @@ void editorDrawRows(struct abuf *ab)
                 len = 0;
             if (len > E.screencols)
                 len = E.screencols;
-            abAppend(ab, &E.row[filerow].render[E.coloff], len);
+            char *c = &E.row[filerow].render[E.coloff];
+            for (int j = 0; j < len; j++)
+            {
+                if (isdigit(c[j]))
+                {
+                    abAppend(ab, "\x1b[31m", 5);
+                    abAppend(ab, &c[j], 1);
+                    abAppend(ab, "\x1b[39m", 5);
+                }
+                else
+                {
+                    abAppend(ab, &c[j], 1);
+                }
+            }
         }
         abAppend(ab, "\x1b[K", 3);
         // the 'K' command is used to clear the line.
