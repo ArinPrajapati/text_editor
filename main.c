@@ -65,6 +65,7 @@ struct editorConfig
     int cx, cy;
     // cx and cy are the x and y coordinates of the cursor.
     int rx;
+    // rx is the x coordinate of the cursor in the render field.
     int rowoff;
     int coloff;
     int screenrows;
@@ -314,6 +315,22 @@ int editorRowsCxToRx(erow *row, int cx)
     }
 
     return rx;
+}
+
+int editorRowRxToCx(erow *row, int rx)
+{
+    int cur_rx = 0;
+    int cx;
+
+    for (cx = 0; cx < row->size; cx++)
+    {
+        if (row->chars[cx] == '\t')
+            cur_rx += (TEXT_EDITOR_TAB_STOP - 1) - (cur_rx % TEXT_EDITOR_TAB_STOP);
+
+        if (cur_rx > rx)
+            return cx;
+    }
+    return cx;
 }
 
 void editorUpdateRow(erow *row)
@@ -602,6 +619,31 @@ void editorSave()
     editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
+// find
+
+void editorFind()
+{
+    char *query = editorPrompt("Search: %s (Use ESC to cancel | Arrows to navigate)");
+    if (query == NULL)
+        return;
+
+    int i;
+    for (i = 0; i < E.numrows; i++)
+    {
+        erow *row = &E.row[i];
+        char *match = strstr(row->render, query);
+        if (match)
+        {
+            E.cy = i;
+            E.cx = editorRowRxToCx(row, match - row->render);
+            E.rowoff = E.numrows;
+            break;
+        }
+    }
+
+    free(query);
+}
+
 //** append buff */
 
 struct abuf
@@ -792,6 +834,10 @@ void editorProcessKeypress()
     case END_KEY:
         if (E.cy < E.numrows)
             E.cx = E.row[E.cy].size;
+        break;
+
+    case CTRL_KEY('f'):
+        editorFind();
         break;
 
     case Back_Space:
@@ -1043,7 +1089,7 @@ int main(int argc, char *argv[])
         editorOpen(argv[1]);
     }
 
-    editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
+    editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
     while (1)
     {
         editorRefreshScreen();
