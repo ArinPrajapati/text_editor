@@ -1,4 +1,4 @@
-/*** includes ***/
+/* * includes ***/
 
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
@@ -49,6 +49,12 @@ enum editorKey
     Page_Down,
 };
 
+enum editorHighlight{
+    HL_NORMAL = 0,
+    HL_NUMBER
+};
+
+
 /*** data ***/
 
 typedef struct erow
@@ -57,7 +63,7 @@ typedef struct erow
     int rsize;
     char *chars;
     char *render;
-
+    unsigned char *hl;
     // global struct to store the editor configuration.
 } erow;
 struct editorConfig
@@ -301,6 +307,27 @@ int getWindowsSize(int *rows, int *cols)
     }
 }
 
+
+/** syntax highlighting **/
+
+void editorUpdateSyntax(erow *row){
+    row->hl = realloc(row->hl,row->rsize);
+    memset(row->hl,HL_NORMAL,row->rsize);
+    // memset() comes from <string.h>
+    for(int i = 0;i < row->rsize;i++){
+        if(isdigit(row->render[i])){
+            row->hl[i] = HL_NUMBER;
+        }
+    }
+}
+
+int editorSyntaxToColor(int hl){
+    switch(hl){
+        case HL_NUMBER: return 31;
+        default: return 37;
+    }
+}
+
 /** row operations */
 
 int editorRowsCxToRx(erow *row, int cx)
@@ -366,6 +393,9 @@ void editorUpdateRow(erow *row)
     }
     row->render[idx] = '\0';
     row->rsize = idx;
+
+
+    editorUpdateSyntax(row);
 }
 
 void editorInsertRow(int at, char *s, size_t len)
@@ -386,6 +416,7 @@ void editorInsertRow(int at, char *s, size_t len)
 
     E.row[at].rsize = 0;
     E.row[at].render = NULL;
+    E.row[at].hl = NULL;
     editorUpdateRow(&E.row[at]);
 
     E.numrows++;
@@ -396,6 +427,8 @@ void editorFreeRow(erow *row)
 {
     free(row->render);
     free(row->chars);
+    free(row->hl);
+    // free the memory 
 }
 
 void editorDelRow(int at)
@@ -617,12 +650,13 @@ void editorSave()
     }
     free(buf);
     editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+
 }
 
 // find
 
 void editorFindCallBack(char *query, int key)
-{
+{   
     static int last_match = -1;
     // static is used to make a variable persist between function calls.
     static int direction = 1;
@@ -633,7 +667,7 @@ void editorFindCallBack(char *query, int key)
         direction = 1;
 
         return;
-    }
+      }
     else if (key == Arrow_Right || key == Arrow_Down)
     {
         direction = 1;
@@ -1019,19 +1053,27 @@ void editorDrawRows(struct abuf *ab)
             if (len > E.screencols)
                 len = E.screencols;
             char *c = &E.row[filerow].render[E.coloff];
-            for (int j = 0; j < len; j++)
-            {
-                if (isdigit(c[j]))
-                {
-                    abAppend(ab, "\x1b[31m", 5);
-                    abAppend(ab, &c[j], 1);
-                    abAppend(ab, "\x1b[39m", 5);
-                }
-                else
-                {
-                    abAppend(ab, &c[j], 1);
-                }
+            int current_color = -1;
+            unsigned char *hl = &E.row[filerow].hl[E.coloff]; 
+            for (int j = 0; j < len; j++){
+                if(hl[j] == HL_NORMAL){
+                    if(current_color != -1){
+                        abAppend(ab, "\x1b[39m",5);
+                        current_color = -1;
+                    }
+                    abAppend(ab,&c[j],1);
+                }else {
+                    int color = editorSyntaxToColor(hl[j]);
+                   if(color != current_color){
+                        current_color = color;
+                        char buf[16];
+                        int clen = snprintf(buf,sizeof(buf) , "\x1b[%dm",color);
+                        abAppend(ab,buf,clen);
+                    }
+                    abAppend(ab,&c[j],1);
+                   }
             }
+            abAppend(ab,"\x1b[39m",5);
         }
         abAppend(ab, "\x1b[K", 3);
         // the 'K' command is used to clear the line.
@@ -1039,8 +1081,8 @@ void editorDrawRows(struct abuf *ab)
     }
     // this if statement is to check if we are on the last row.
     // if we are not on the last row, we print a newline character.
-}
 
+}
 void editorDrawStatusBar(struct abuf *ab)
 {
 
