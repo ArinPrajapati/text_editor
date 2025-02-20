@@ -1,3 +1,4 @@
-https://viewsourcecode.org/snaptoken/kilo/05.aTextEditor.html#the-enter-key
+https://viewsourcecode.org/snaptoken/kilo/07.syntaxHighlighting.html
+
 
 
